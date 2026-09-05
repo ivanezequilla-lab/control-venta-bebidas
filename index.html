@@ -525,7 +525,7 @@
       <div class="precio-input-row">
         <div class="precio-input">
           <span>S/</span>
-          <input type="number" id="precioInput" value="10.00" min="0" step="0.10">
+          <input type="number" id="precioInput" value="6.00" min="0" step="0.10">
         </div>
       </div>
     </section>
@@ -641,8 +641,8 @@
   ];
 
   let products = [
-    {id:'p1', name:'Cerveza', icon:'beer-mug-empty', price:10.00},
-    {id:'p2', name:'Gaseosa', icon:'bottle-water', price:4.00},
+    {id:'p1', name:'Cerveza', icon:'beer-mug-empty', price:6.00},
+    {id:'p2', name:'Gaseosa', icon:'bottle-water', price:3.50},
     {id:'p3', name:'Agua', icon:'droplet', price:2.00}
   ];
 
@@ -670,6 +670,26 @@
      paralelo, solo para tu reporte/estadistica centralizada.
   ========================================================= */
   const LOCAL_STORAGE_KEY = 'ventaBebidas_historial_v1';
+  const LOCAL_PRODUCTS_KEY = 'ventaBebidas_productos_v1';
+
+  function saveProductsToLocal(){
+    try{
+      localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(products));
+    }catch(err){
+      console.error('No se pudo guardar los productos localmente:', err);
+    }
+  }
+
+  function loadProductsFromLocal(){
+    try{
+      const raw = localStorage.getItem(LOCAL_PRODUCTS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return (Array.isArray(parsed) && parsed.length) ? parsed : null;
+    }catch(err){
+      console.error('No se pudo leer los productos guardados localmente:', err);
+      return null;
+    }
+  }
 
   function saveVentasToLocal(){
     try{
@@ -1071,7 +1091,7 @@
     track.querySelectorAll('input[data-field="name"]').forEach(input => {
       input.addEventListener('input', (e) => {
         const p = products.find(pp => pp.id === e.target.dataset.id);
-        if(p){ p.name = e.target.value; renderProductButtons(); renderVentas(); }
+        if(p){ p.name = e.target.value; renderProductButtons(); renderVentas(); saveProductsToLocal(); }
       });
     });
     track.querySelectorAll('input[data-field="price"]').forEach(input => {
@@ -1081,6 +1101,7 @@
         const val = parseFloat(e.target.value);
         p.price = isNaN(val) ? 0 : val;
         renderProductButtons();
+        saveProductsToLocal();
         if(state.selectedProductId === p.id){
           state.precio = p.price;
           el('precioInput').value = p.price.toFixed(2);
@@ -1093,6 +1114,7 @@
         const id = e.currentTarget.dataset.id;
         if(!confirm('¿Eliminar este producto?')) return;
         products = products.filter(pp => pp.id !== id);
+        saveProductsToLocal();
         if(state.selectedProductId === id){
           state.selectedProductId = products.length ? products[0].id : null;
           if(state.selectedProductId){ selectProduct(state.selectedProductId); }
@@ -1136,6 +1158,7 @@
       price: price
     };
     products.push(newProduct);
+    saveProductsToLocal();
     renderProductButtons();
     renderCarousel();
     carouselIndex = products.length - 1; // mostrar el producto recien creado
@@ -1179,6 +1202,20 @@
   }
 
   function init(){
+    const savedProducts = loadProductsFromLocal();
+    if(savedProducts){ products = savedProducts; }
+
+    // asegurar que el producto/precio inicial sean consistentes con lo cargado
+    // (por si el producto por defecto ('p1') ya no existe o cambio de precio)
+    if(!products.find(p => p.id === state.selectedProductId)){
+      state.selectedProductId = products.length ? products[0].id : null;
+    }
+    if(state.selectedProductId){
+      const initialProduct = products.find(p => p.id === state.selectedProductId);
+      state.precio = initialProduct.price;
+      el('precioInput').value = initialProduct.price.toFixed(2);
+    }
+
     renderProductButtons();
     buildOptionButtons('qtyButtons', QTY_OPTIONS, selectQty);
     buildOptionButtons('billButtons', BILL_OPTIONS, selectBill);
