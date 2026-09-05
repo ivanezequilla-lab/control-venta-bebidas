@@ -662,53 +662,61 @@
     }
   }
 
-  /**
-   * Recupera el historial guardado en Google Sheets al abrir la app.
-   * Se usa JSONP (una etiqueta <script>) en vez de fetch(), porque
-   * los Web Apps de Apps Script no incluyen cabeceras CORS y el
-   * navegador bloquearia la lectura de la respuesta con fetch normal.
-   */
-  function loadVentasFromSheet(){
-    if(!SHEETS_WEBAPP_URL || SHEETS_WEBAPP_URL.indexOf('PEGA_AQUI') !== -1) return;
+  /* =========================================================
+     LECTURA DEL HISTORIAL: Google Sheets API v4
+     ---------------------------------------------------------
+     El guardado (POST) sigue yendo por Apps Script (arriba),
+     pero la LECTURA usa la API oficial de Google Sheets, que
+     si soporta CORS de forma confiable en cualquier navegador
+     (a diferencia de los Web Apps de Apps Script en algunos
+     navegadores moviles).
+     1. En tu Google Sheets: Compartir > Cualquier usuario con
+        el enlace > Lector.
+     2. En Google Cloud Console: habilita "Google Sheets API"
+        y crea una clave de API restringida a tu dominio y a
+        esa API.
+     3. Pega el ID de tu hoja (esta en la URL, entre /d/ y /edit)
+        y la clave de API abajo.
+  ========================================================= */
+  const SHEETS_API_KEY = 'AIzaSyDYhFOMcRt6t57gNgMu2Qtmui8osJvogVk';
+  const SPREADSHEET_ID = '1sUBw-BtcH-N9MAK1RZmQk5SCmntAjjRxojxu8IbNAok';
+  const SHEETS_RANGE = 'Ventas!A2:J';
+
+  async function loadVentasFromSheet(){
+    if(!SHEETS_API_KEY || SHEETS_API_KEY.indexOf('PEGA_AQUI') !== -1) return;
+    if(!SPREADSHEET_ID || SPREADSHEET_ID.indexOf('PEGA_AQUI') !== -1) return;
     const syncEl = el('sheetSyncStatus');
     if(syncEl){ syncEl.textContent = 'Cargando historial desde Google Sheets...'; syncEl.className = 'sheet-sync-status syncing'; }
 
-    const cbName = 'sheetsLoadCb_' + Date.now();
-    const script = document.createElement('script');
+    try{
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEETS_RANGE)}?key=${SHEETS_API_KEY}`;
+      const res = await fetch(url);
+      if(!res.ok){ throw new Error('HTTP ' + res.status); }
+      const data = await res.json();
+      const rows = data.values || [];
 
-    const cleanup = () => {
-      delete window[cbName];
-      if(script.parentNode){ script.parentNode.removeChild(script); }
-    };
-
-    window[cbName] = function(rows){
-      state.ventas = (rows || [])
+      state.ventas = rows
         .map(r => ({
-          id: r.id,
-          qty: r.qty,
-          precio: r.precio,
-          bill: r.bill,
-          total: r.total,
-          vuelto: r.vuelto,
-          productName: r.productName,
-          productIcon: r.productIcon || 'glass-water',
-          time: r.time
+          id: r[0],
+          fecha: r[1],
+          time: r[2],
+          productName: r[3],
+          productIcon: r[4] || 'glass-water',
+          qty: Number(r[5]) || 0,
+          precio: Number(r[6]) || 0,
+          total: Number(r[7]) || 0,
+          bill: Number(r[8]) || 0,
+          vuelto: Number(r[9]) || 0
         }))
         .reverse(); // en la hoja quedan de mas antigua a mas nueva; en la app se muestra la mas nueva arriba
+
       renderVentas();
       renderTotalVendido();
       if(syncEl){ syncEl.textContent = 'Historial cargado desde Google Sheets'; syncEl.className = 'sheet-sync-status ok'; }
-      cleanup();
-    };
-
-    script.onerror = () => {
-      console.error('No se pudo cargar el historial desde Google Sheets.');
+    }catch(err){
+      console.error('No se pudo cargar el historial desde Google Sheets:', err);
       if(syncEl){ syncEl.textContent = 'No se pudo cargar el historial desde Sheets'; syncEl.className = 'sheet-sync-status error'; }
-      cleanup();
-    };
-
-    script.src = SHEETS_WEBAPP_URL + '?callback=' + cbName;
-    document.body.appendChild(script);
+    }
   }
 
   const state = {
