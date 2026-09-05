@@ -644,6 +644,35 @@
   ========================================================= */
   const SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbz9jVV9FaZ-zutwU-PD1_cjiGG4DABUZGkNqcCH7XU1M_1oqrHmuoQP3XQ8YdWaBZd-/exec';
 
+  /* =========================================================
+     GUARDADO LOCAL (localStorage)
+     ---------------------------------------------------------
+     El historial se guarda directamente en este navegador/
+     telefono, asi que SIEMPRE se muestra al abrir la app,
+     sin depender de la conexion a internet ni de Google
+     Sheets. Google Sheets sigue recibiendo cada venta en
+     paralelo, solo para tu reporte/estadistica centralizada.
+  ========================================================= */
+  const LOCAL_STORAGE_KEY = 'ventaBebidas_historial_v1';
+
+  function saveVentasToLocal(){
+    try{
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state.ventas));
+    }catch(err){
+      console.error('No se pudo guardar el historial localmente:', err);
+    }
+  }
+
+  function loadVentasFromLocal(){
+    try{
+      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }catch(err){
+      console.error('No se pudo leer el historial local:', err);
+      return [];
+    }
+  }
+
   async function sendVentaToSheet(venta){
     if(!SHEETS_WEBAPP_URL || SHEETS_WEBAPP_URL.indexOf('PEGA_AQUI') !== -1) return;
     const syncEl = el('sheetSyncStatus');
@@ -712,6 +741,7 @@
 
       renderVentas();
       renderTotalVendido();
+      saveVentasToLocal();
       if(syncEl){ syncEl.textContent = 'Historial cargado desde Google Sheets'; syncEl.className = 'sheet-sync-status ok'; }
     }catch(err){
       console.error('No se pudo cargar el historial desde Google Sheets:', err);
@@ -858,6 +888,7 @@
     renderVentas();
     renderTotalVendido();
     recalc();
+    saveVentasToLocal();
     sendVentaToSheet(venta);
   }
 
@@ -1124,6 +1155,7 @@
         state.ventas = [];
         renderVentas();
         renderTotalVendido();
+        saveVentasToLocal();
       }
     });
 
@@ -1133,10 +1165,19 @@
     });
 
     applyTheme();
+
+    // 1. Cargar de inmediato lo que ya esta guardado en este telefono/navegador.
+    state.ventas = loadVentasFromLocal();
     recalc();
     renderVentas();
     renderTotalVendido();
-    loadVentasFromSheet();
+
+    // 2. Si este telefono no tiene nada guardado todavia (ej: primera vez,
+    //    o se limpio el navegador), se intenta recuperar desde Google Sheets
+    //    como respaldo. Si falla, no pasa nada: ya se mostro el historial local.
+    if(state.ventas.length === 0){
+      loadVentasFromSheet();
+    }
   }
 
   init();
