@@ -217,9 +217,21 @@
   .total-vendido .big-number{font-size:clamp(1.8rem,5vw,2.4rem);color:var(--accent);}
   .clear-btn{
     background:none;border:none;color:var(--text-secondary);cursor:pointer;
-    font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:6px;margin-top:4px;
+    font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:6px;
   }
   .clear-btn:hover{color:var(--danger);}
+  .compare-btn:hover{color:var(--accent);}
+  .historial-actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:6px;}
+  .compare-results{
+    display:none;flex-direction:column;gap:4px;
+    background:var(--btn-bg);border-radius:var(--radius-sm);
+    padding:12px 14px;margin-bottom:14px;font-size:.85rem;font-weight:700;
+  }
+  .compare-results.show{display:flex;}
+  .compare-results .cr-ok{color:var(--success);}
+  .compare-results .cr-local{color:var(--text);}
+  .compare-results .cr-remote{color:var(--accent);}
+  .compare-results .cr-error{color:var(--danger);}
   .ventas-list{
     list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;
     max-height:420px;overflow-y:auto;
@@ -552,13 +564,17 @@
       <div class="historial-header">
         <div>
           <h2 style="margin-bottom:2px;"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-2-1.5L14 22l-2-1.5L10 22l-2-1.5L6 22V2z"/><line x1="8.5" y1="7" x2="15.5" y2="7"/><line x1="8.5" y1="11" x2="15.5" y2="11"/><line x1="8.5" y1="15" x2="13" y2="15"/></svg></i> Historial de ventas</h2>
-          <button class="clear-btn" id="clearBtn"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg></i> Vaciar historial</button>
+          <div class="historial-actions">
+            <button class="clear-btn" id="clearBtn"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg></i> Vaciar historial (este navegador)</button>
+            <button class="clear-btn compare-btn" id="compareBtn"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="12" r="7"/><circle cx="15" cy="12" r="7"/></svg></i> Comparar con Sheets</button>
+          </div>
         </div>
         <div class="total-vendido">
           <span class="label">Total vendido</span>
           <div class="big-number" id="totalVendido">S/ 0.00</div>
         </div>
       </div>
+      <div class="compare-results" id="compareResults"></div>
       <ul class="ventas-list" id="ventasList">
         <li class="empty-state"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12l-1.2 16.2A2 2 0 0 1 14.8 21H9.2a2 2 0 0 1-2-1.8L6 3z"/><line x1="6.6" y1="9" x2="17.4" y2="9"/></svg></i>Aún no hay ventas registradas</li>
       </ul>
@@ -711,33 +727,46 @@
   const SPREADSHEET_ID = '1sUBw-BtcH-N9MAK1RZmQk5SCmntAjjRxojxu8IbNAok';
   const SHEETS_RANGE = 'Ventas!A2:J';
 
+  function sheetsConfigured(){
+    return SHEETS_API_KEY && SHEETS_API_KEY.indexOf('PEGA_AQUI') === -1 &&
+           SPREADSHEET_ID && SPREADSHEET_ID.indexOf('PEGA_AQUI') === -1;
+  }
+
+  /**
+   * Trae el historial crudo desde Google Sheets (sin tocar el
+   * estado de la app). Se usa tanto para cargar el historial
+   * inicial como para compararlo contra lo guardado en el
+   * telefono.
+   */
+  async function fetchVentasFromSheet(){
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEETS_RANGE)}?key=${SHEETS_API_KEY}`;
+    const res = await fetch(url);
+    if(!res.ok){ throw new Error('HTTP ' + res.status); }
+    const data = await res.json();
+    const rows = data.values || [];
+    return rows.map(r => ({
+      id: r[0],
+      fecha: r[1],
+      time: r[2],
+      productName: r[3],
+      productIcon: r[4] || 'glass-water',
+      qty: Number(r[5]) || 0,
+      precio: Number(r[6]) || 0,
+      total: Number(r[7]) || 0,
+      bill: Number(r[8]) || 0,
+      vuelto: Number(r[9]) || 0
+    }));
+  }
+
   async function loadVentasFromSheet(){
-    if(!SHEETS_API_KEY || SHEETS_API_KEY.indexOf('PEGA_AQUI') !== -1) return;
-    if(!SPREADSHEET_ID || SPREADSHEET_ID.indexOf('PEGA_AQUI') !== -1) return;
+    if(!sheetsConfigured()) return;
     const syncEl = el('sheetSyncStatus');
     if(syncEl){ syncEl.textContent = 'Cargando historial desde Google Sheets...'; syncEl.className = 'sheet-sync-status syncing'; }
 
     try{
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${encodeURIComponent(SHEETS_RANGE)}?key=${SHEETS_API_KEY}`;
-      const res = await fetch(url);
-      if(!res.ok){ throw new Error('HTTP ' + res.status); }
-      const data = await res.json();
-      const rows = data.values || [];
-
-      state.ventas = rows
-        .map(r => ({
-          id: r[0],
-          fecha: r[1],
-          time: r[2],
-          productName: r[3],
-          productIcon: r[4] || 'glass-water',
-          qty: Number(r[5]) || 0,
-          precio: Number(r[6]) || 0,
-          total: Number(r[7]) || 0,
-          bill: Number(r[8]) || 0,
-          vuelto: Number(r[9]) || 0
-        }))
-        .reverse(); // en la hoja quedan de mas antigua a mas nueva; en la app se muestra la mas nueva arriba
+      const rows = await fetchVentasFromSheet();
+      // en la hoja quedan de mas antigua a mas nueva; en la app se muestra la mas nueva arriba
+      state.ventas = rows.slice().reverse();
 
       renderVentas();
       renderTotalVendido();
@@ -746,6 +775,46 @@
     }catch(err){
       console.error('No se pudo cargar el historial desde Google Sheets:', err);
       if(syncEl){ syncEl.textContent = 'No se pudo cargar el historial desde Sheets'; syncEl.className = 'sheet-sync-status error'; }
+    }
+  }
+
+  /**
+   * Compara el historial guardado en este telefono/navegador
+   * contra lo que realmente hay en Google Sheets, e imprime un
+   * resumen (coinciden / solo aqui / solo en Sheets).
+   */
+  async function compareWithSheet(){
+    const box = el('compareResults');
+    if(!box) return;
+
+    if(!sheetsConfigured()){
+      box.className = 'compare-results show';
+      box.innerHTML = '<span class="cr-error">Google Sheets no esta configurado todavia.</span>';
+      return;
+    }
+
+    box.className = 'compare-results show';
+    box.innerHTML = '<span>Comparando con Google Sheets...</span>';
+
+    try{
+      const remoteVentas = await fetchVentasFromSheet();
+      const localIds = new Set(state.ventas.map(v => String(v.id)));
+      const remoteIds = new Set(remoteVentas.map(v => String(v.id)));
+
+      let coinciden = 0;
+      localIds.forEach(id => { if(remoteIds.has(id)) coinciden++; });
+
+      const soloLocal = [...localIds].filter(id => !remoteIds.has(id)).length;
+      const soloSheet = [...remoteIds].filter(id => !localIds.has(id)).length;
+
+      box.innerHTML = `
+        <span class="cr-ok">✓ ${coinciden} venta${coinciden === 1 ? '' : 's'} coinciden en ambos lados</span>
+        <span class="cr-local">📱 ${soloLocal} solo en este navegador (no llegaron a Sheets)</span>
+        <span class="cr-remote">☁️ ${soloSheet} solo en Sheets (registradas desde otro dispositivo)</span>
+      `;
+    }catch(err){
+      console.error('No se pudo comparar con Google Sheets:', err);
+      box.innerHTML = '<span class="cr-error">No se pudo comparar con Google Sheets. Intenta de nuevo.</span>';
     }
   }
 
@@ -1151,13 +1220,16 @@
 
     el('clearBtn').addEventListener('click', () => {
       if(state.ventas.length === 0) return;
-      if(confirm('¿Vaciar todo el historial de ventas?')){
+      if(confirm('¿Vaciar el historial guardado en este navegador?\n\nEsto NO borra los registros en Google Sheets, solo lo que ves aqui en este dispositivo.')){
         state.ventas = [];
         renderVentas();
         renderTotalVendido();
         saveVentasToLocal();
+        el('compareResults').className = 'compare-results';
       }
     });
+
+    el('compareBtn').addEventListener('click', compareWithSheet);
 
     el('themeBtn').addEventListener('click', () => {
       state.themeIndex = (state.themeIndex + 1) % THEMES.length;
