@@ -1,0 +1,22 @@
+{
+  "id": "./",
+  "name": "Control de Venta de Bebidas",
+  "short_name": "Venta Bebidas",
+  "description": "Registra ventas de bebidas, calcula el vuelto automaticamente y lleva un historial.",
+  "lang": "es",
+
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+
+  "background_color": "#FFDE59",
+  "theme_color": "#FF3EA5",
+
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

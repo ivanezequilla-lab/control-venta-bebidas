@@ -4,6 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Control de Venta de Bebidas</title>
+
+<!-- ============ PWA ============
+     Todas las rutas son RELATIVAS (sin "/" inicial) para que funcionen
+     en GitHub Pages, donde la app vive en una subcarpeta:
+     https://usuario.github.io/nombre-del-repo/
+-->
+<!-- Manifest: nombre, iconos y modo de pantalla completa de la app instalada -->
+<link rel="manifest" href="manifest.json">
+<!-- Color de la barra de estado (se actualiza por JS al cambiar de tema) -->
+<meta name="theme-color" content="#FF3EA5">
+<!-- Soporte iOS (Safari no lee bien el manifest, necesita estas etiquetas) -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Venta Bebidas">
+<!-- ============ fin PWA ============ -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;700;800;900&family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -511,7 +528,12 @@
 
   <header class="topbar">
     <div class="brand"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16l-8 8.5L4 4z"/><line x1="12" y1="12.5" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/><circle cx="18" cy="4" r="2.1"/><line x1="18" y1="1.9" x2="18" y2="6.1"/><line x1="15.9" y1="4" x2="20.1" y2="4"/></svg></i> Control de Venta de Bebidas</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <!-- Oculto por defecto; el navegador avisa (beforeinstallprompt) cuando
+         la app se puede instalar y entonces lo mostramos por JS. -->
+    <button class="theme-btn" id="installBtn" style="display:none;"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg></i> Instalar app</button>
     <button class="theme-btn" id="themeBtn"><i><svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.5-1.4-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4c0-5-4-7.5-9-7.5z"/><circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none"/><circle cx="10" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="7.5" r="1" fill="currentColor" stroke="none"/><circle cx="17" cy="11" r="1" fill="currentColor" stroke="none"/></svg></i> <span id="themeLabel">Neobrutalismo</span></button>
+    </div>
   </header>
 
   <main class="grid">
@@ -1195,10 +1217,21 @@
     });
   }
 
+  // Color de acento de cada tema: se usa para pintar la barra de estado
+  // del celular cuando la PWA esta instalada (meta theme-color).
+  const THEME_ACCENT_COLORS = {
+    neo: '#FF3EA5',
+    bento: '#FF7A59',
+    minimal: '#101114',
+    glass: '#7CF2D0'
+  };
+
   function applyTheme(){
     const theme = THEMES[state.themeIndex];
     document.body.dataset.theme = theme;
     el('themeLabel').textContent = THEME_LABELS[theme];
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if(meta) meta.setAttribute('content', THEME_ACCENT_COLORS[theme] || '#FF3EA5');
   }
 
   function init(){
@@ -1288,6 +1321,57 @@
       loadVentasFromSheet();
     }
   }
+
+  /* =============================================================
+     PWA: REGISTRO DEL SERVICE WORKER
+     -------------------------------------------------------------
+     Le dice al navegador cual es el script que debe ejecutar en
+     segundo plano (cache y modo offline).
+     - Ruta RELATIVA ('service-worker.js'): en GitHub Pages resuelve a
+       https://usuario.github.io/nombre-del-repo/service-worker.js
+     - scope './': el SW controla solo la carpeta de esta app.
+     Se registra en el evento "load" para no frenar la carga inicial.
+  ============================================================= */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js', { scope: './' })
+        .then((reg) => console.log('[PWA] Service Worker registrado. Scope:', reg.scope))
+        .catch((err) => console.error('[PWA] Error al registrar el Service Worker:', err));
+    });
+  }
+
+  /* =============================================================
+     PWA: BOTON "INSTALAR APP"
+     -------------------------------------------------------------
+     Chrome/Edge/Android lanzan "beforeinstallprompt" cuando la app
+     cumple los requisitos para instalarse. Interceptamos ese evento
+     para mostrar NUESTRO boton en vez del banner por defecto.
+     (En iPhone/Safari no existe este evento: ahi se instala desde
+     Compartir > "Agregar a pantalla de inicio".)
+  ============================================================= */
+  let eventoInstalacion = null;           // aqui guardamos el evento hasta que el usuario toque el boton
+  const installBtn = el('installBtn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();                   // evita el mini-banner automatico del navegador
+    eventoInstalacion = e;
+    installBtn.style.display = 'flex';    // mostramos nuestro boton
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if(!eventoInstalacion) return;
+    eventoInstalacion.prompt();           // muestra el dialogo nativo de instalacion
+    const { outcome } = await eventoInstalacion.userChoice;  // 'accepted' o 'dismissed'
+    console.log('[PWA] Decision del usuario:', outcome);
+    eventoInstalacion = null;             // el evento solo se puede usar una vez
+    installBtn.style.display = 'none';
+  });
+
+  // Si la app ya se instalo (por nuestro boton o por el menu del navegador), ocultamos el boton
+  window.addEventListener('appinstalled', () => {
+    installBtn.style.display = 'none';
+    eventoInstalacion = null;
+  });
 
   init();
 })();
